@@ -499,12 +499,11 @@ async fn superseded_memories_are_exported_and_counted() {
     cancellation.cancel();
 }
 
-/// The staging directory is deleted before the response starts streaming, so
-/// the artifact is reachable only through the open descriptor. If that trick
-/// ever stops holding, the download becomes empty rather than merely slower —
-/// this asserts the bytes really are a populated store.
+/// The response is streamed from the staging file rather than buffered, and
+/// the download has to be the complete, populated store with its length
+/// declared up front — not merely a non-empty body.
 #[tokio::test]
-async fn the_streamed_body_survives_deletion_of_its_staging_directory() {
+async fn the_streamed_body_is_the_complete_store() {
     let dir = TempDir::new().expect("temp dir");
     let (url, state, cancellation) = start_test_server(&dir).await;
     let client = reqwest::Client::new();
@@ -552,5 +551,117 @@ async fn the_streamed_body_survives_deletion_of_its_staging_directory() {
         .expect("count memories in the streamed export");
     assert_eq!(e + s + p, 1);
 
+    cancellation.cancel();
+}
+
+/// The staging copy has to land under the configured snapshot root, not the
+/// system temp dir. In production the gateway runs as a non-root user on a
+/// read-only root filesystem, and `/tmp` is a Fargate bind mount that arrives
+/// owned by root — `TempDir::new()` there fails with EACCES, and every
+/// self-serve export 500s. The snapshot root is the one directory the deploy
+/// guarantees is writable (an EFS access point owned by the gateway's uid).
+#[tokio::test]
+async fn export_stages_under_the_snapshot_root() {
+    let dir = TempDir::new().expect("test dir");
+    let snapshot_root = dir.path().join("snapshots");
+    assert!(
+        !snapshot_root.exists(),
+        "precondition: nothing has created the snapshot root yet"
+    );
+    let (url, _state, cancellation) = start_test_server(&dir).await;
+    let client = reqwest::Client::new();
+    remember(
+        &client,
+        &url,
+        TENANT_OWNER,
+        "staging",
+        "lands under the snapshot root",
+    )
+    .await;
+
+    let (status, _, bytes) = export(&client, &url, TENANT_OWNER).await;
+    assert_eq!(status, reqwest::StatusCode::OK);
+    let (_export_dir, _exported) = open_export(&bytes);
+
+    assert!(
+        snapshot_root.is_dir(),
+        "the export must stage under the snapshot root so a writable mount is used"
+    );
+    assert_no_staging_leftovers(&snapshot_root).await;
+    cancellation.cancel();
+}
+
+/// Cleanup rides on the response body, which the server drops a moment after
+/// the last byte reaches the socket; allow it that moment.
+async fn assert_no_staging_leftovers(snapshot_root: &std::path::Path) {
+    let mut leftovers = Vec::new();
+    for _ in 0..50 {
+        leftovers = std::fs::read_dir(snapshot_root)
+            .expect("list snapshot root")
+            .map(|entry| entry.expect("entry").file_name())
+            .collect();
+        if leftovers.is_empty() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+    }
+    panic!("staging directory must be removed once the body is done: {leftovers:?}");
+}
+
+/// A client that disconnects mid-download must not leave the staging
+/// directory behind either: cleanup is tied to the body, not to the handler
+/// finishing or the client reading to the end.
+#[tokio::test]
+async fn an_abandoned_download_leaves_no_staging_directory() {
+    let dir = TempDir::new().expect("test dir");
+    let snapshot_root = dir.path().join("snapshots");
+    let (url, _state, cancellation) = start_test_server(&dir).await;
+    let client = reqwest::Client::new();
+    remember(
+        &client,
+        &url,
+        TENANT_OWNER,
+        "staging",
+        "abandoned mid-download",
+    )
+    .await;
+
+    let response = client
+        .post(format!("{url}/v1/export"))
+        .header(TENANT_HEADER, TENANT_OWNER)
+        .send()
+        .await
+        .expect("export request");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    // Headers are in; the body is not read. Dropping the response drops the
+    // connection, and with it the server side of the stream.
+    drop(response);
+
+    assert_no_staging_leftovers(&snapshot_root).await;
+    cancellation.cancel();
+}
+
+/// Fail closed, and say why: a snapshot root that cannot be created is a
+/// deployment defect, and the response body is what the customer's dashboard
+/// shows. A regular file at the root's path fails for every uid, unlike a
+/// read-only directory, which root walks straight through.
+#[tokio::test]
+async fn a_snapshot_root_that_cannot_be_created_fails_the_export_closed() {
+    let dir = TempDir::new().expect("test dir");
+    std::fs::write(dir.path().join("snapshots"), b"not a directory")
+        .expect("occupy the snapshot root path with a file");
+    let (url, _state, cancellation) = start_test_server(&dir).await;
+    let client = reqwest::Client::new();
+    remember(&client, &url, TENANT_OWNER, "staging", "cannot be written").await;
+
+    let (status, _, body) = export(&client, &url, TENANT_OWNER).await;
+
+    assert_eq!(status, reqwest::StatusCode::INTERNAL_SERVER_ERROR);
+    let body: serde_json::Value = serde_json::from_slice(&body).expect("JSON error body");
+    let error = body["error"].as_str().expect("error string");
+    assert!(
+        error.contains("staging directory"),
+        "the body must name the failing step, got: {error}"
+    );
     cancellation.cancel();
 }
