@@ -6,15 +6,17 @@
 # only validates that call parameter shapes match the server's schema.
 #
 # Requires either:
-#   - PENSYVE_API_KEY set + Pensyve Cloud reachable (default)
-#   - pensyve-mcp binary on PATH + PENSYVE_USE_LOCAL=1 set
+#   - pensyve-mcp binary on PATH (default, local stdio), or
+#   - PENSYVE_USE_LOCAL=0 + PENSYVE_API_KEY set, targeting a self-hosted
+#     pensyve-mcp-gateway at PENSYVE_MCP_URL (default http://localhost:3000/mcp)
 #
 # Uses the MCP Inspector CLI (npx @modelcontextprotocol/inspector) for tool
 # invocation. If Inspector is unavailable, prints instructions and exits.
 
 set -euo pipefail
 
-USE_LOCAL="${PENSYVE_USE_LOCAL:-0}"
+USE_LOCAL="${PENSYVE_USE_LOCAL:-1}"
+MCP_URL="${PENSYVE_MCP_URL:-http://localhost:3000/mcp}"
 TEST_ENTITY="pensyve-cursor-smoketest"
 TEST_EPISODE_ID=""
 
@@ -32,20 +34,19 @@ fi
 
 if [ "$USE_LOCAL" = "1" ]; then
   if ! command -v pensyve-mcp >/dev/null 2>&1; then
-    echo "ERROR: 'pensyve-mcp' binary not on PATH. Build with:"
-    echo "  cargo build --release -p pensyve-mcp"
-    echo "  cp target/release/pensyve-mcp /usr/local/bin/"
+    echo "ERROR: 'pensyve-mcp' binary not on PATH. Install with (from a checkout of the repo):"
+    echo "  cargo install --path pensyve-mcp"
     exit 1
   fi
   echo "Mode: Local stdio (pensyve-mcp binary)"
 else
   if [ -z "${PENSYVE_API_KEY:-}" ]; then
     echo "ERROR: PENSYVE_API_KEY not set. Either:"
-    echo "  1. Export PENSYVE_API_KEY=psy_... for Cloud mode, or"
-    echo "  2. Export PENSYVE_USE_LOCAL=1 for local stdio mode"
+    echo "  1. Export PENSYVE_API_KEY=psy_... (a key configured on your gateway), or"
+    echo "  2. Unset PENSYVE_USE_LOCAL (or set it to 1) for local stdio mode"
     exit 1
   fi
-  echo "Mode: Cloud (https://mcp.pensyve.com/mcp)"
+  echo "Mode: Self-hosted gateway ($MCP_URL)"
 fi
 echo ""
 
@@ -60,7 +61,7 @@ invoke_tool() {
       --method tools/call --tool-name "$tool" --tool-arg "$params" 2>&1)
   else
     response=$(npx --yes @modelcontextprotocol/inspector --cli \
-      --transport http --url "https://mcp.pensyve.com/mcp" \
+      --transport http --url "$MCP_URL" \
       --header "Authorization: Bearer $PENSYVE_API_KEY" \
       --method tools/call --tool-name "$tool" --tool-arg "$params" 2>&1)
   fi

@@ -1,11 +1,13 @@
 name: Publish MCP Registry
 
+# server.json lists the ghcr image that the Release workflow pushes, and the
+# registry checks that image's ownership label, so publish only after a
+# successful release. A manual run must target a release tag, to retry a
+# publish that failed after its release.
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - server.json
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -15,9 +17,21 @@ permissions:
 jobs:
   publish:
     name: Publish server.json
+    # Only a tag push to this repository may publish; a fork PR could rename
+    # its own workflow to "Release" and trigger this one.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref_type == 'tag') ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository
+      )
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
 
       - name: Install MCP publisher
         env:
@@ -35,7 +49,17 @@ jobs:
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
       - name: Validate manifest
-        run: mcp-publisher validate server.json
+        env:
+          RELEASE_TAG: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+        run: |
+          mcp-publisher validate server.json
+          # The OCI package tag must match the manifest version.
+          jq -e '.version as $v | all(.packages[]; .identifier | endswith(":" + $v))' server.json
+          # The manifest version must match the release tag whose image
+          # release.yml pushed.
+          [ -n "${RELEASE_TAG}" ] || { echo "no release tag; refusing to publish" >&2; exit 1; }
+          jq -e --arg v "${RELEASE_TAG#v}" '.version == $v' server.json \
+            || { echo "server.json version does not match release tag ${RELEASE_TAG}; bump it in the release commit" >&2; exit 1; }
 
       - name: Authenticate with GitHub OIDC
         run: mcp-publisher login github-oidc

@@ -22,20 +22,14 @@ Choose your path based on how you want to use Pensyve.
 
 The fastest way to get persistent memory in Claude Code.
 
-### Cloud (no build required)
+### Install
 
 ```
 /plugin marketplace add /path/to/pensyve/integrations/claude-code
 /plugin install pensyve@pensyve
 ```
 
-Set your API key (get one at [pensyve.com/settings/api-keys](https://pensyve.com/settings/api-keys)):
-
-```bash
-export PENSYVE_API_KEY="psy_your_key"
-```
-
-Restart Claude Code. Try it:
+Then point the plugin at a Pensyve MCP server (see Local below, or a self-hosted gateway). Restart Claude Code. Try it:
 
 ```
 /remember auth-service: uses JWT tokens with RS256 signing
@@ -43,9 +37,9 @@ Restart Claude Code. Try it:
 /memory-status
 ```
 
-### Local (self-hosted)
+### Local
 
-Build the MCP server first ([Building from Source](#building-from-source)), then override the MCP config in `.claude/settings.json`:
+Install the MCP server first ([Building from Source](#building-from-source)), then add the MCP config to `.mcp.json` at your project root (project scope) or `~/.claude.json` (user scope):
 
 ```json
 {
@@ -58,7 +52,41 @@ Build the MCP server first ([Building from Source](#building-from-source)), then
 }
 ```
 
+Or register it from the CLI (add `--scope user` for user scope):
+
+```bash
+claude mcp add pensyve -- pensyve-mcp --stdio
+```
+
 No API key needed.
+
+### Self-hosted gateway (HTTP)
+
+To share one store across machines, run a `pensyve-mcp-gateway` ([self-hosting guide](self-host.md)) and point Claude Code at it. The API key is one you configured on the gateway (`PENSYVE_API_KEYS`):
+
+```bash
+export PENSYVE_API_KEY="psy_your_key"
+```
+
+```json
+{
+  "mcpServers": {
+    "pensyve": {
+      "type": "http",
+      "url": "http://localhost:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer ${PENSYVE_API_KEY}"
+      }
+    }
+  }
+}
+```
+
+Or register it from the CLI:
+
+```bash
+claude mcp add --transport http pensyve http://localhost:3000/mcp --header "Authorization: Bearer ${PENSYVE_API_KEY}"
+```
 
 See [`integrations/claude-code/README.md`](../integrations/claude-code/README.md) for full documentation on commands, skills, agents, and hooks.
 
@@ -68,7 +96,7 @@ See [`integrations/claude-code/README.md`](../integrations/claude-code/README.md
 
 First-class working memory for OpenAI Codex.
 
-### Cloud
+### Install
 
 Add the upstream repository as a Codex marketplace:
 
@@ -77,11 +105,7 @@ codex plugin marketplace add major7apps/pensyve
 codex plugin add pensyve@pensyve-codex
 ```
 
-You can also use `/plugins` to inspect or install **Pensyve** from the **Pensyve Codex** marketplace. For local development from a checkout, use `codex plugin marketplace add /path/to/pensyve/integrations/codex-plugin` instead. Then set your API key:
-
-```bash
-export PENSYVE_API_KEY="psy_your_key"
-```
+You can also use `/plugins` to inspect or install **Pensyve** from the **Pensyve Codex** marketplace. For local development from a checkout, use `codex plugin marketplace add /path/to/pensyve/integrations/codex-plugin` instead. The bundled MCP config runs the local stdio server (`pensyve-mcp --stdio`), so build and install `pensyve-mcp` first ([Building from Source](#building-from-source)); no API key is needed.
 
 Try it:
 
@@ -94,7 +118,7 @@ $pensyve remember that auth-service uses RS256 signing
 
 The plugin bundles its `.mcp.json`, skills, commands, hooks, assets, and install metadata. Current reliable Codex explicit invocation uses `/skills`, `$pensyve`, or `/pensyve`. The `@pensyve` form is a text-level compatibility convention, not native autocomplete or selector behavior; app-style `$app-slug` invocation can be added later through `.app.json` when a registered Pensyve Codex app/connector exists.
 
-### Local
+### Local (manual config)
 
 Build the MCP server first ([Building from Source](#building-from-source)), then use a project MCP config:
 
@@ -120,38 +144,9 @@ See [`integrations/codex-plugin/README.md`](../integrations/codex-plugin/README.
 
 Works with any MCP-compatible client: Cursor, Cline, Continue, Windsurf, VS Code Copilot.
 
-### Cloud
-
-Set your API key:
-
-```bash
-export PENSYVE_API_KEY="psy_your_key"
-```
+### Local
 
 Add to your client's MCP config (the exact file varies by client):
-
-```json
-{
-  "mcpServers": {
-    "pensyve": {
-      "url": "https://mcp.pensyve.com/mcp",
-      "env": {
-        "PENSYVE_API_KEY": "${PENSYVE_API_KEY}"
-      }
-    }
-  }
-}
-```
-
-| Client          | Config file                           |
-| --------------- | ------------------------------------- |
-| Cursor          | `.cursor/mcp.json`                    |
-| Cline           | Cline settings → MCP Servers          |
-| Continue        | `~/.continue/config.json`             |
-| Windsurf        | `~/.codeium/windsurf/mcp_config.json` |
-| VS Code Copilot | `.vscode/mcp.json`                    |
-
-### Local
 
 ```json
 {
@@ -167,7 +162,32 @@ Add to your client's MCP config (the exact file varies by client):
 }
 ```
 
-Build: `cargo build --release -p pensyve-mcp`
+Install: `cargo install --path pensyve-mcp` (from a checkout of the repo)
+
+| Client          | Config file                           |
+| --------------- | ------------------------------------- |
+| Cursor          | `.cursor/mcp.json`                    |
+| Cline           | Cline settings → MCP Servers          |
+| Continue        | `~/.continue/config.json`             |
+| Windsurf        | `~/.codeium/windsurf/mcp_config.json` |
+| VS Code Copilot | `.vscode/mcp.json`                    |
+
+### Self-hosted gateway (HTTP)
+
+For clients that speak remote MCP, run a `pensyve-mcp-gateway` ([self-hosting guide](self-host.md)) and use its `/mcp` endpoint. The API key is one you configured on the gateway:
+
+```json
+{
+  "mcpServers": {
+    "pensyve": {
+      "url": "http://localhost:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer ${PENSYVE_API_KEY}"
+      }
+    }
+  }
+}
+```
 
 ### Tools exposed
 
@@ -249,8 +269,7 @@ import { Pensyve } from "@pensyve/sdk";
 
 const p = new Pensyve({
   baseUrl: "http://localhost:3000", // local gateway
-  // Or Pensyve Cloud:
-  // baseUrl: "https://api.pensyve.com",
+  // Or a self-hosted gateway with API keys:
   // apiKey: "psy_your_key",
 });
 
@@ -298,8 +317,7 @@ import (
 func main() {
     client := pensyve.NewClient(pensyve.Config{
         BaseURL: "http://localhost:3000",
-        // Or Pensyve Cloud:
-        // BaseURL: "https://api.pensyve.com",
+        // Or a self-hosted gateway with API keys:
         // APIKey:  "psy_your_key",
     })
 
@@ -351,7 +369,7 @@ items = store.search(("user_123", "memories"), query="color preferences")
 graph = builder.compile(store=store)
 ```
 
-Auto-detects local vs cloud based on `PENSYVE_API_KEY` env var.
+Auto-detects local vs remote (self-hosted gateway) based on `PENSYVE_API_KEY` env var.
 
 ---
 
@@ -377,7 +395,7 @@ crew = Crew(
 )
 ```
 
-Auto-detects local vs cloud based on `PENSYVE_API_KEY` env var.
+Auto-detects local vs remote (self-hosted gateway) based on `PENSYVE_API_KEY` env var.
 
 ---
 
@@ -534,7 +552,7 @@ cd pensyve-go && go test ./...            # Go
 
 | Variable             | Default                  | Description                         |
 | -------------------- | ------------------------ | ----------------------------------- |
-| `PENSYVE_API_KEY`    | —                        | Cloud API key (`psy_...`)           |
+| `PENSYVE_API_KEY`    | —                        | Gateway API key (`psy_...`)         |
 | `PENSYVE_NAMESPACE`  | `default`                | Memory namespace                    |
 | `PENSYVE_PATH`       | `~/.pensyve/<namespace>` | Local storage directory             |
 | `PENSYVE_API_KEYS`   | —                        | Gateway auth keys (comma-separated) |

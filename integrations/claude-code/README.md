@@ -53,59 +53,21 @@ Add the Pensyve marketplace and install:
 
 ### Configure the MCP Server
 
-The plugin ships commands, skills, hooks, and agents — but does **not** bundle an MCP server config. This is intentional: your MCP auth (API key vs OAuth) and backend (Cloud vs Local) are personal choices, so you configure them once in your own settings and they follow you across Claude Code updates without surprise.
+The plugin ships commands, skills, hooks, and agents — but does **not** bundle an MCP server config. This is intentional: your MCP backend (local stdio vs a self-hosted gateway) is a personal choice, so you configure them once in your own settings and they follow you across Claude Code updates without surprise.
 
-Add an `mcpServers.pensyve` entry to your `~/.claude/settings.json` (for all projects) or `.claude/settings.json` in a project (for project-only scope). Pick **one** of these three options:
+Add an `mcpServers.pensyve` entry to `.mcp.json` at your project root (project scope) or to `~/.claude.json` (user scope, all projects), or register it with `claude mcp add`. Claude Code does not read `mcpServers` from `settings.json`. Pick **one** of these two options:
 
-**Option 1 — Pensyve Cloud with API key (recommended for most users)**
+**Option 1 — Local (offline, recommended)**
 
-```bash
-export PENSYVE_API_KEY="psy_your_key_here"
-```
-
-```json
-{
-  "mcpServers": {
-    "pensyve": {
-      "type": "http",
-      "url": "https://mcp.pensyve.com/mcp",
-      "headers": {
-        "Authorization": "Bearer ${PENSYVE_API_KEY}"
-      }
-    }
-  }
-}
-```
-
-Create your key at [pensyve.com/settings/api-keys](https://pensyve.com/settings/api-keys). Put the `export` in `~/.bashrc` or `~/.zshrc` to persist. Works everywhere (local dev, CI, headless boxes, containers).
-
-**Option 2 — Pensyve Cloud with OAuth (browser sign-in)**
-
-```json
-{
-  "mcpServers": {
-    "pensyve": {
-      "type": "http",
-      "url": "https://mcp.pensyve.com/mcp"
-    }
-  }
-}
-```
-
-On first connection Claude Code opens a browser and you sign in at pensyve.com. Session is managed automatically — no keys to create or rotate. Requires a browser on the machine; not suitable for CI or remote/headless setups.
-
-**Option 3 — Pensyve Local (self-hosted, offline)**
-
-Build and install the MCP binary:
+Install the MCP binary:
 
 ```bash
 git clone https://github.com/major7apps/pensyve
 cd pensyve
-cargo build --release -p pensyve-mcp
-# Copy target/release/pensyve-mcp into your PATH
+cargo install --path pensyve-mcp  # installs to ~/.cargo/bin
 ```
 
-Then in settings:
+Then add this to `.mcp.json` or `~/.claude.json`:
 
 ```json
 {
@@ -118,7 +80,43 @@ Then in settings:
 }
 ```
 
+Or register it from the CLI (add `--scope user` to make it available in all projects):
+
+```bash
+claude mcp add pensyve -- pensyve-mcp --stdio
+```
+
 No API key needed — all data stays on your machine in SQLite.
+
+**Option 2 — Self-hosted gateway (remote)**
+
+Run your own `pensyve-mcp-gateway` (see the [self-hosting guide](https://github.com/major7apps/pensyve/blob/main/docs/self-host.md)) and set `PENSYVE_API_KEY` to a key configured on it:
+
+```bash
+export PENSYVE_API_KEY="psy_your_key_here"
+```
+
+```json
+{
+  "mcpServers": {
+    "pensyve": {
+      "type": "http",
+      "url": "http://localhost:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer ${PENSYVE_API_KEY}"
+      }
+    }
+  }
+}
+```
+
+Or register it from the CLI:
+
+```bash
+claude mcp add --transport http pensyve http://localhost:3000/mcp --header "Authorization: Bearer ${PENSYVE_API_KEY}"
+```
+
+Put the `export` in `~/.bashrc` or `~/.zshrc` to persist. Works everywhere (local dev, CI, headless boxes, containers).
 
 > **Why `headers` for HTTP and `env` for stdio?** The `headers` block only applies to remote MCP servers (HTTP transport). The `env` block passes environment variables into locally-launched subprocess MCP servers (stdio transport). They don't mix.
 
@@ -226,7 +224,7 @@ All settings are configured in `pensyve-plugin.local.md` (copy to your project r
 
 | Variable            | Default              | Description                                      |
 | ------------------- | -------------------- | ------------------------------------------------ |
-| `PENSYVE_API_KEY`   | —                    | API key for Pensyve Cloud (not needed for local) |
+| `PENSYVE_API_KEY`   | —                    | API key for a self-hosted gateway (not needed for local) |
 | `PENSYVE_NAMESPACE` | auto-detected        | Memory namespace. Overrides automatic git/CWD-based project detection. |
 | `PENSYVE_PATH`      | `~/.pensyve/default` | Storage directory path (local only)              |
 
@@ -244,7 +242,7 @@ The plugin wraps 7 MCP tools exposed by the `pensyve-mcp` binary:
 | `pensyve_forget`        | `entity`                               | `forgotten_count`. Entity-wide, irreversible hard delete; use `pensyve_forget_memory` to delete a single memory by id. |
 | `pensyve_inspect`       | `entity`, `memory_type?`, `limit?`     | Array of memories with stats         |
 
-All tools communicate over MCP. The Cloud server is at `https://mcp.pensyve.com/mcp`. The plugin never bypasses MCP to access storage directly.
+All tools communicate over MCP. A self-hosted gateway serves MCP at `/mcp` (for example `http://localhost:3000/mcp`). The plugin never bypasses MCP to access storage directly.
 
 ## Design Philosophy
 
@@ -256,7 +254,6 @@ All tools communicate over MCP. The Cloud server is at `https://mcp.pensyve.com/
 
 ## Links
 
-- **Website:** [pensyve.com](https://pensyve.com)
 - **GitHub:** [github.com/major7apps/pensyve](https://github.com/major7apps/pensyve)
 
 ## License

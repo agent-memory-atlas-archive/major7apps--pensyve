@@ -18,40 +18,40 @@ Two steps: configure the MCP server, then install the rules.
 
 Merge the `config.yaml.example` fragment into your Continue config at `~/.continue/config.yaml`.
 
-**Cloud with API key (recommended):**
+**Local (offline, recommended):**
+
+```yaml
+mcpServers:
+  - name: pensyve
+    command: pensyve-mcp
+    args:
+      - --stdio
+    env:
+      PENSYVE_PATH: ~/.pensyve/
+      PENSYVE_NAMESPACE: default
+```
+
+Install the binary: `cargo install --path pensyve-mcp` from the [pensyve repo](https://github.com/major7apps/pensyve).
+
+**Self-hosted gateway (remote):**
+
+Add the key to `~/.continue/.env`, where Continue reads `secrets.*` values:
 
 ```bash
-export PENSYVE_API_KEY="psy_your_key_here"
+PENSYVE_API_KEY=psy_your_key_here
 ```
 
 ```yaml
 mcpServers:
   - name: pensyve
-    transport:
-      type: streamable-http
-      url: https://mcp.pensyve.com/mcp
+    type: streamable-http
+    url: http://localhost:3000/mcp
+    requestOptions:
       headers:
-        Authorization: "Bearer ${PENSYVE_API_KEY}"
+        Authorization: "Bearer ${{ secrets.PENSYVE_API_KEY }}"
 ```
 
-Create your key at [pensyve.com/settings/api-keys](https://pensyve.com/settings/api-keys). Put the `export` in `~/.bashrc` or `~/.zshrc` to persist.
-
-**Local (offline, self-hosted):**
-
-```yaml
-mcpServers:
-  - name: pensyve
-    transport:
-      type: stdio
-      command: pensyve-mcp
-      args:
-        - --stdio
-      env:
-        PENSYVE_PATH: ~/.pensyve/
-        PENSYVE_NAMESPACE: default
-```
-
-Build the binary: `cargo build --release -p pensyve-mcp` from the [pensyve repo](https://github.com/major7apps/pensyve).
+Use a key configured on your own [`pensyve-mcp-gateway`](https://github.com/major7apps/pensyve/blob/main/docs/self-host.md).
 
 ### 2. Install the rules
 
@@ -120,7 +120,7 @@ Pensyve behaves as working memory for the agent — always-on, ambient, continuo
 | `pensyve_forget` | Delete an entity's memories |
 | `pensyve_inspect` | List memories for an entity |
 
-See [MCP Tools Reference](https://pensyve.com/docs/api-reference/mcp-tools) for full parameter details.
+See [MCP Tools Reference](https://github.com/major7apps/pensyve#mcp-server) for full parameter details.
 
 ## Design Philosophy
 
@@ -131,7 +131,6 @@ See [MCP Tools Reference](https://pensyve.com/docs/api-reference/mcp-tools) for 
 
 ## Links
 
-- **Website:** [pensyve.com](https://pensyve.com)
 - **GitHub:** [github.com/major7apps/pensyve](https://github.com/major7apps/pensyve)
 - **Spec:** [Cursor adapter design](https://github.com/major7apps/pensyve-docs/blob/main/specs/2026-04-20-pensyve-cursor-adapter-design.md)
 - **Playbook:** [Working-memory substrate design](https://github.com/major7apps/pensyve-docs/blob/main/specs/2026-04-18-pensyve-working-memory-substrate-design.md)
