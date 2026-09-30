@@ -13,15 +13,18 @@ Universal memory runtime for AI agents -- recall, remember, and inspect memories
 
 ## Setup
 
-1. Start the Pensyve REST API server:
+1. Start a `pensyve-mcp-gateway`, which serves the REST API the extension uses. From a checkout of the [pensyve repo](https://github.com/major7apps/pensyve):
 
    ```bash
-   cd /path/to/pensyve
+   cargo build --release -p pensyve-mcp-gateway
+   HOST=127.0.0.1 ./target/release/pensyve-mcp-gateway
    ```
 
+   With `PENSYVE_API_KEYS` unset, the gateway accepts requests without a key, so bind it to `127.0.0.1` as shown. It listens on all interfaces by default. If other machines can reach it, set `PENSYVE_API_KEYS=psy_...` (a comma-separated list of keys, each starting with `psy_`) and requests without a key are then rejected. See the [self-hosting guide](https://github.com/major7apps/pensyve/blob/main/docs/self-host.md) for a persistent deployment.
+
 2. Configure the extension in VS Code settings:
-   - `pensyve.serverUrl`: Server URL (default: `http://localhost:8000`)
-   - `pensyve.apiKey`: Optional API key for authenticated requests
+   - `pensyve.serverUrl`: Gateway URL (default: `http://localhost:3000`)
+   - `pensyve.apiKey`: One of the gateway's `PENSYVE_API_KEYS`. Leave it empty if the gateway has none.
 
 ## Commands
 
